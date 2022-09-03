@@ -14,5 +14,10 @@ int main() {
 
     BPTREE *tree = bptree_create("cliente", get_cliente_size(), 2, id_comparator, cliente_from_stream, cliente_to_stream, cliente_show);
 
+    int pt_node, pos;
+
+    bp_tree_search(tree, 3, client1, &pt_node, &pos);
+
+
     return 0;
 }
