@@ -6,15 +6,18 @@
 int _create_index_node(BPTREE * tree, int parent, int flag);
 BPTREE_INDEX_NODE * _get_index_node(BPTREE *tree, int index);
 void _set_index_node(BPTREE * tree, BPTREE_INDEX_NODE * node, int index);
-int get_index_node_size(BPTREE *tree);
+int _get_index_node_size(BPTREE *tree);
 
 int _create_data_node(BPTREE *tree, int parent, int next);
 BPTREE_DATA_NODE * _get_data_node(BPTREE *tree, int index);
 void _set_data_node(BPTREE * tree, BPTREE_DATA_NODE * node, int index);
-int get_data_node_size(BPTREE *tree);
+void _insert_element_data_node(BPTREE * tree, BPTREE_DATA_NODE * node, int pt_node, int pos, var element);
+int _get_data_node_size(BPTREE *tree);
 
 void _get_meta_data(BPTREE * tree, int * root, int * flag);
 void _set_meta_data(BPTREE * tree, int root, int flag);
+
+int _get_maximum_size(BPTREE * tree);
 
 
 
@@ -97,8 +100,10 @@ int bp_tree_search(BPTREE *tree, int key, var element, int *pt_node, int *pos) {
         BPTREE_INDEX_NODE *index_node = _get_index_node(tree, temp_pt_node);
 
         if(temp_pt_node == pt_root && index_node->m == 0) {
-            printf("ERROR: Tree is empty.\n");
-            return -1;
+            #ifdef BPTREE_DEBUG
+                printf("bp_tree_search: empty tree - end\n\n");
+            #endif
+            return 0;
         }
 
         int i = 0;
@@ -139,6 +144,65 @@ int bp_tree_search(BPTREE *tree, int key, var element, int *pt_node, int *pos) {
     return 0;
 }
 
+/**
+ * @brief Inserts a new element in the B+ tree.
+ * 
+ * @param tree The tree where the element will be inserted.
+ * @param key The key to be inserted.
+ * @param element The element to be inserted.
+ */
+void bp_tree_insert(BPTREE *tree, int key, var element) {
+    #ifdef BPTREE_DEBUG
+        printf("\nbp_tree_insert: start\n");
+    #endif
+
+    int pt_root, flag;
+    _get_meta_data(tree, &pt_root, &flag);
+
+    int pt_node, pos, status;
+    status = bp_tree_search(tree, key, element, &pt_node, &pos);
+
+    if (status == 1) {
+        printf("ERROR: Key already exists.\n");
+        return;
+    }
+    else {
+        BPTREE_DATA_NODE *data_node = _get_data_node(tree, pt_node);
+
+        if(data_node->m <= _get_maximum_size(tree)) {
+            _insert_element_data_node(tree, data_node, pt_node, pos, element);
+            printf("Element inserted.\n");
+        }
+        else {
+            //BPTREE_DATA_NODE *new_data_node = _create_data_node(tree, -1, LEAF);
+
+            // int mid = (tree->order - 1) / 2;
+
+            // for(int i = mid + 1; i < tree->order; i++) {
+            //     _insert_data_node(tree, new_data_node->pt_node, i - mid - 1, data_node->data[i]);
+            // }
+
+            // data_node->m = mid;
+
+            // if(pos <= mid) {
+            //     _insert_data_node(tree, pt_node, pos, element);
+            // }
+            // else {
+            //     _insert_data_node(tree, new_data_node->pt_node, pos - mid - 1, element);
+            // }
+
+            // int new_key = _get_data_node_key(tree, new_data_node->pt_node, 0);
+
+            // _insert_index_node(tree, pt_node, new_key, new_data_node->pt_node);
+        }
+    }
+
+    #ifdef BPTREE_DEBUG
+        printf("bp_tree_insert: end\n\n");
+    #endif
+}
+
+
 
 
 // Utility functions ----------------------------------------------------------
@@ -149,13 +213,13 @@ int _create_index_node(BPTREE * tree, int parent, int flag) {
     node->m = 0;
     node->flag = flag;
     node->parent = parent;
-    node->children = (int *) malloc(sizeof(int) * (2 * tree->order + 1));
-    node->keys = (int *) malloc(sizeof(int) * 2 * tree->order);
+    node->children = (int *) malloc(sizeof(int) * (_get_maximum_size(tree) + 1));
+    node->keys = (int *) malloc(sizeof(int) * _get_maximum_size(tree));
 
-    for(int i = 0; i < 2 * tree->order; i++) {
+    for(int i = 0; i < _get_maximum_size(tree); i++) {
         node->keys[i] = -1;
     }
-    for(int i = 0; i < 2 * tree->order + 1; i++) {
+    for(int i = 0; i < _get_maximum_size(tree) + 1; i++) {
         node->children[i] = -1;
     }
 
@@ -171,20 +235,20 @@ int _create_index_node(BPTREE * tree, int parent, int flag) {
 BPTREE_INDEX_NODE * _get_index_node(BPTREE *tree, int index) { 
     BPTREE_INDEX_NODE *node = (BPTREE_INDEX_NODE *)malloc(sizeof(BPTREE_INDEX_NODE));
 
-    fseek(tree->index_file, index * get_index_node_size(tree), SEEK_SET);
+    fseek(tree->index_file, index * _get_index_node_size(tree), SEEK_SET);
     
-    node->children = (int *)malloc(sizeof(int) * node->m + 1);
-    node->keys = (int *)malloc(sizeof(int) * node->m);
+    node->children = (int *)malloc(sizeof(int) * _get_maximum_size(tree) + 1);
+    node->keys = (int *)malloc(sizeof(int) * _get_maximum_size(tree));
 
     if(!fread(&node->m, sizeof(node->m), 1, tree->index_file)
     || !fread(&node->flag, sizeof(node->flag), 1, tree->index_file)
     || !fread(&node->parent, sizeof(node->parent), 1, tree->index_file)
-    || !fread(node->children, sizeof(int), node->m + 1, tree->index_file)) {
+    || !fread(node->children, sizeof(int), _get_maximum_size(tree) + 1, tree->index_file)) {
         printf("Error reading index node.\n");
     }
 
     if(node->m != 0) {
-        if(!fread(node->keys, sizeof(int), node->m, tree->index_file)) {
+        if(!fread(node->keys, sizeof(int), _get_maximum_size(tree), tree->index_file)) {
             printf("Error reading index node.\n");
         }
     }
@@ -193,7 +257,7 @@ BPTREE_INDEX_NODE * _get_index_node(BPTREE *tree, int index) {
 }
 
 void _set_index_node(BPTREE * tree, BPTREE_INDEX_NODE * node, int index) {
-    fseek(tree->index_file, index * get_index_node_size(tree), SEEK_SET);
+    fseek(tree->index_file, index * _get_index_node_size(tree), SEEK_SET);
     
     fwrite(&node->m, sizeof(node->m), 1, tree->index_file);
     
@@ -201,14 +265,14 @@ void _set_index_node(BPTREE * tree, BPTREE_INDEX_NODE * node, int index) {
     
     fwrite(&node->parent, sizeof(node->parent), 1, tree->index_file);
     
-    fwrite(node->children, sizeof(int), 2*tree->order + 1, tree->index_file);
+    fwrite(node->children, sizeof(int), _get_maximum_size(tree) + 1, tree->index_file);
     
-    fwrite(node->keys, sizeof(int), 2*tree->order, tree->index_file);
+    fwrite(node->keys, sizeof(int), _get_maximum_size(tree), tree->index_file);
     
 }
 
-int get_index_node_size(BPTREE *tree) {
-    return sizeof(int) + sizeof(int) + sizeof(int) + (sizeof(int) * (tree->order * 2 + 1)) + (sizeof(int) * (tree->order * 2 + 1));
+int _get_index_node_size(BPTREE *tree) {
+    return sizeof(int) + sizeof(int) + sizeof(int) + (sizeof(int) * (_get_maximum_size(tree) + 1)) + (sizeof(int) * (_get_maximum_size(tree)));
 }
 
 int _create_data_node(BPTREE *tree, int parent, int next) {
@@ -216,9 +280,9 @@ int _create_data_node(BPTREE *tree, int parent, int next) {
     node->m = 0;
     node->parent = parent;
     node->next = next;
-    node->data = (var *) malloc(sizeof(var) * 2 * tree->order);
+    node->data = (var *) malloc(sizeof(var) * _get_maximum_size(tree));
     
-    for(int i = 0; i < 2 * tree->order; i++) {
+    for(int i = 0; i < _get_maximum_size(tree); i++) {
         node->data[i] = (char *) malloc(tree->element_size);
         node->data[i] = "";
     }
@@ -235,7 +299,7 @@ int _create_data_node(BPTREE *tree, int parent, int next) {
 BPTREE_DATA_NODE * _get_data_node(BPTREE *tree, int index) {
     BPTREE_DATA_NODE *node = (BPTREE_DATA_NODE *) malloc(sizeof(BPTREE_DATA_NODE));
 
-    fseek(tree->data_file, index * get_data_node_size(tree), SEEK_SET);
+    fseek(tree->data_file, index * _get_data_node_size(tree), SEEK_SET);
 
     if(!fread(&node->m, sizeof(node->m), 1, tree->data_file)
     || !fread(&node->parent, sizeof(node->parent), 1, tree->data_file)
@@ -243,8 +307,8 @@ BPTREE_DATA_NODE * _get_data_node(BPTREE *tree, int index) {
         printf("Error reading data node\n");
     }
 
-    node->data = (var *) malloc(sizeof(var) * node->m);
-    for(int i = 0; i < node->m; i++) {
+    node->data = (var *) malloc(sizeof(var) * _get_maximum_size(tree));
+    for(int i = 0; i < _get_maximum_size(tree); i++) {
         node->data[i] = tree->from(tree->data_file);
     }
 
@@ -252,7 +316,7 @@ BPTREE_DATA_NODE * _get_data_node(BPTREE *tree, int index) {
 }
 
 void _set_data_node(BPTREE * tree, BPTREE_DATA_NODE * node, int index) {
-    fseek(tree->data_file, index * get_data_node_size(tree), SEEK_SET);
+    fseek(tree->data_file, index * _get_data_node_size(tree), SEEK_SET);
     
     fwrite(&node->m, sizeof(node->m), 1, tree->data_file);
     
@@ -260,13 +324,31 @@ void _set_data_node(BPTREE * tree, BPTREE_DATA_NODE * node, int index) {
     
     fwrite(&node->next, sizeof(node->next), 1, tree->data_file);
 
-    for(int i = 0; i < 2*tree->order; i++) {
+    for(int i = 0; i < _get_maximum_size(tree); i++) {
         tree->to(tree->data_file, node->data[i]);
     }
 }
 
-int get_data_node_size(BPTREE *tree) {
-    return sizeof(int) + sizeof(int) + sizeof(int) + (tree->element_size * (tree->order * 2));
+void _insert_element_data_node(BPTREE * tree, BPTREE_DATA_NODE * node, int pt_node, int pos, var element) {
+    for(int i = node->m; i > pos; i--) {
+        node->data[i] = node->data[i - 1];
+    }
+
+    node->data[pos] = element;
+
+    node->m++;
+
+    BPTREE_INDEX_NODE *index_node = _get_index_node(tree, node->parent);
+    index_node->m++;
+    _set_index_node(tree, index_node, node->parent);
+
+    _set_data_node(tree, node, pt_node);
+}
+
+
+
+int _get_data_node_size(BPTREE *tree) {
+    return sizeof(int) + sizeof(int) + sizeof(int) + (tree->element_size * _get_maximum_size(tree));
 }
 
 void _get_meta_data(BPTREE * tree, int * root, int * flag) {
@@ -281,4 +363,8 @@ void _set_meta_data(BPTREE * tree, int root, int flag) {
     fseek(tree->meta_data_file, 0, SEEK_SET);
     fwrite(&root, sizeof(root), 1, tree->meta_data_file);
     fwrite(&flag, sizeof(flag), 1, tree->meta_data_file);
+}
+
+int _get_maximum_size(BPTREE * tree) {
+    return 2 * tree->order;
 }

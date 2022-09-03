@@ -16,8 +16,9 @@ int main() {
 
     int pt_node, pos;
 
-    bp_tree_search(tree, 3, client1, &pt_node, &pos);
+    bp_tree_insert(tree, client1->id, client1);
 
+    bp_tree_search(tree, client1->id, client1, &pt_node, &pos);
 
     return 0;
 }
