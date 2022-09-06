@@ -19,6 +19,7 @@ void _set_meta_data(BPTREE * tree, int root, int flag);
 
 int _get_maximum_size(BPTREE * tree);
 
+void print_index_node(BPTREE_INDEX_NODE * node);
 
 
 /**
@@ -95,15 +96,15 @@ int bp_tree_search(BPTREE *tree, int key, var element, int *pt_node, int *pos) {
 
     int temp_pt_node = pt_root;
 
-
     while(temp_pt_node != -1) {
         BPTREE_INDEX_NODE *index_node = _get_index_node(tree, temp_pt_node);
-
+        
         if(temp_pt_node == pt_root && index_node->m == 0) {
             #ifdef BPTREE_DEBUG
                 printf("bp_tree_search: empty tree - end\n\n");
             #endif
-            return 0;
+
+            return -1;
         }
 
         int i = 0;
@@ -111,6 +112,7 @@ int bp_tree_search(BPTREE *tree, int key, var element, int *pt_node, int *pos) {
             if(key < index_node->keys[i])
                 break;  
         }
+
         temp_pt_node = index_node->children[i];
 
         if(index_node->flag == LEAF) {
@@ -123,16 +125,23 @@ int bp_tree_search(BPTREE *tree, int key, var element, int *pt_node, int *pos) {
             for(int j = 0; j < data_node->m; j++) {
                 if(tree->comp(data_node->data[j], element) == 0) {
                     *pos = j;
+
                     status = 1;
+
                     break;
                 }
                 else if (tree->comp(data_node->data[j], element) == 1) {
                     *pos = j;
+
                     break;
                 }
             }
 
             *pos = data_node->m;
+
+            #ifdef BPTREE_DEBUG
+                printf("bp_tree_search: status: %s - end\n\n", status == 1 ? "found" : "not found");
+            #endif
 
             return status;
         }
@@ -141,6 +150,7 @@ int bp_tree_search(BPTREE *tree, int key, var element, int *pt_node, int *pos) {
     #ifdef BPTREE_DEBUG
         printf("bp_tree_search: end\n\n");
     #endif
+
     return 0;
 }
 
@@ -166,6 +176,20 @@ void bp_tree_insert(BPTREE *tree, int key, var element) {
         printf("ERROR: Key already exists.\n");
         return;
     }
+    else if (status == -1) {
+        #ifdef BPTREE_DEBUG
+            printf("\nbp_tree_insert: Empty tree\n");
+        #endif
+
+        BPTREE_INDEX_NODE *index_node = _get_index_node(tree, pt_root);
+        index_node->keys[0] = key;
+        int index_data_node = _create_data_node(tree, pt_root, -1);
+        index_node->children[1] = index_data_node;
+        index_node->m = 1;
+        _set_index_node(tree, index_node, pt_root);
+        BPTREE_DATA_NODE *data_node = _get_data_node(tree, index_data_node);
+        _insert_element_data_node(tree, data_node, index_data_node, pos, element);
+    }
     else {
         BPTREE_DATA_NODE *data_node = _get_data_node(tree, pt_node);
 
@@ -174,26 +198,8 @@ void bp_tree_insert(BPTREE *tree, int key, var element) {
             printf("Element inserted.\n");
         }
         else {
-            //BPTREE_DATA_NODE *new_data_node = _create_data_node(tree, -1, LEAF);
+            // Implementar split
 
-            // int mid = (tree->order - 1) / 2;
-
-            // for(int i = mid + 1; i < tree->order; i++) {
-            //     _insert_data_node(tree, new_data_node->pt_node, i - mid - 1, data_node->data[i]);
-            // }
-
-            // data_node->m = mid;
-
-            // if(pos <= mid) {
-            //     _insert_data_node(tree, pt_node, pos, element);
-            // }
-            // else {
-            //     _insert_data_node(tree, new_data_node->pt_node, pos - mid - 1, element);
-            // }
-
-            // int new_key = _get_data_node_key(tree, new_data_node->pt_node, 0);
-
-            // _insert_index_node(tree, pt_node, new_key, new_data_node->pt_node);
         }
     }
 
@@ -288,8 +294,13 @@ int _create_data_node(BPTREE *tree, int parent, int next) {
     }
 
     fseek(tree->data_file, 0, SEEK_END);
-    int index = ftell(tree->data_file) / sizeof(BPTREE_DATA_NODE);
+    int index = ftell(tree->data_file) / _get_data_node_size(tree);
     _set_data_node(tree, node, index);
+
+
+    BPTREE_INDEX_NODE *index_node = _get_index_node(tree, parent);
+    index_node->children[0] = index;
+    _set_index_node(tree, index_node, parent);
 
     free(node);
 
@@ -300,7 +311,6 @@ BPTREE_DATA_NODE * _get_data_node(BPTREE *tree, int index) {
     BPTREE_DATA_NODE *node = (BPTREE_DATA_NODE *) malloc(sizeof(BPTREE_DATA_NODE));
 
     fseek(tree->data_file, index * _get_data_node_size(tree), SEEK_SET);
-
     if(!fread(&node->m, sizeof(node->m), 1, tree->data_file)
     || !fread(&node->parent, sizeof(node->parent), 1, tree->data_file)
     || !fread(&node->next, sizeof(node->next), 1, tree->data_file)) {
@@ -338,9 +348,9 @@ void _insert_element_data_node(BPTREE * tree, BPTREE_DATA_NODE * node, int pt_no
 
     node->m++;
 
-    BPTREE_INDEX_NODE *index_node = _get_index_node(tree, node->parent);
-    index_node->m++;
-    _set_index_node(tree, index_node, node->parent);
+    // BPTREE_INDEX_NODE *index_node = _get_index_node(tree, node->parent);
+    // index_node->m++;
+    // _set_index_node(tree, index_node, node->parent);
 
     _set_data_node(tree, node, pt_node);
 }
@@ -353,7 +363,7 @@ int _get_data_node_size(BPTREE *tree) {
 
 void _get_meta_data(BPTREE * tree, int * root, int * flag) {
     fseek(tree->meta_data_file, 0, SEEK_SET);
-    if(!fread(root, sizeof(*root), 1, tree->meta_data_file)
+    if(!fread(root, sizeof(int), 1, tree->meta_data_file)
     || !fread(flag, sizeof(*flag), 1, tree->meta_data_file)) {
         printf("Error reading meta data\n");
     }
@@ -367,4 +377,19 @@ void _set_meta_data(BPTREE * tree, int root, int flag) {
 
 int _get_maximum_size(BPTREE * tree) {
     return 2 * tree->order;
+}
+
+
+void print_index_node(BPTREE_INDEX_NODE * node) {
+    printf("m: %d, flag: %d, parent: %d\nkeys: ", node->m, node->flag, node->parent);
+    
+    for(int i = 0; i < node->m - 1; i++) {
+        printf("%d, ", node->keys[i]);
+    }
+    printf("%d\nchildren: ", node->keys[node->m - 1]);
+    
+    for(int i = 0; i < node->m; i++) {
+        printf("%d, ", node->children[i]);
+    }
+    printf("%d\n", node->children[node->m]);
 }
